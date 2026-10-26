@@ -1,17 +1,7 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Loop 7</title>
-<meta name="application-name" content="Loop 7">
-<meta name="apple-mobile-web-app-title" content="Loop 7">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="theme-color" content="#050807">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="lib/fonts.css">
 <style>
 /* Layout: a slate-board manager. Films list, then scenes in order, then a storyboard grid of shots; a shot opens the full-bleed 3D camera stage with a side panel (stacks under the stage on phones). One committed dark look, like a dim set. */
 :root{
@@ -319,9 +309,10 @@ aside .field select,aside .field textarea,aside .field input{font-size:13px}
 <input type="file" id="bkFile" accept=".json,application/json" hidden>
 <div class="toast" id="toast" role="status" hidden></div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="shim.js"></script>
+<script src="lib/three.min.js"></script>
+<script src="lib/GLTFLoader.js"></script>
+<script src="lib/OrbitControls.js"></script>
 <script>
 (function(){
   const $=s=>document.querySelector(s);
@@ -2571,42 +2562,10 @@ aside .field select,aside .field textarea,aside .field input{font-size:13px}
       ready[name]=true;onData(name);
     },()=>{ready[name]=true;onData(name);});
   }
-  /* ---------- storage outside Claude: films, scenes and shots are kept in this browser (IndexedDB) ---------- */
-  async function localDB(){
-    const NAMES=['films','scenes','shots'],mem={films:{},scenes:{},shots:{}},subs={films:[],scenes:[],shots:[]};
-    let idb=null;
-    try{
-      idb=await new Promise((res,rej)=>{const r=indexedDB.open('previs-manager',1);r.onupgradeneeded=()=>{NAMES.forEach(n=>{if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n);});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));});
-      for(const n of NAMES)await new Promise(res=>{const rq=idb.transaction(n,'readonly').objectStore(n).openCursor();rq.onsuccess=()=>{const c=rq.result;if(c){mem[n][c.key]=c.value;c.continue();}else res();};rq.onerror=()=>res();});
-    }catch(e){idb=null;}
-    try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
-    const persist=(n,id,val)=>!idb?Promise.resolve():new Promise((res,rej)=>{const tx=idb.transaction(n,'readwrite'),st=tx.objectStore(n);if(val===undefined)st.delete(id);else st.put(val,id);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});
-    const snap=n=>({docs:Object.keys(mem[n]).map(id=>({id,data:()=>JSON.parse(JSON.stringify(mem[n][id]))}))});
-    const fire=n=>subs[n].forEach(cb=>{try{cb(snap(n));}catch(e){console.error(e);}});
-    const newId=()=>Math.random().toString(36).slice(2,12)+Date.now().toString(36).slice(-6);
-    return {collection:n=>({
-      onSnapshot:cb=>{subs[n].push(cb);setTimeout(()=>cb(snap(n)),0);},
-      doc:id=>{id=id||newId();return {id,
-        set:async d=>{const v=JSON.parse(JSON.stringify(d));mem[n][id]=v;await persist(n,id,v);fire(n);},
-        update:async d=>{if(!mem[n][id]){const e=new Error('not found');e.code='not_found';throw e;}const v=Object.assign({},mem[n][id],JSON.parse(JSON.stringify(d)));mem[n][id]=v;await persist(n,id,v);fire(n);},
-        delete:async()=>{delete mem[n][id];await persist(n,id,undefined);fire(n);}};}
-    })};
-  }
-  // saving a file: the share sheet on phones (Save to Files), a normal download elsewhere
-  function browserDownloads(){
-    return {save:async({filename,data})=>{
-      const blob=data instanceof Blob?data:new Blob([data],{type:'application/json'});
-      try{
-        if(navigator.canShare&&navigator.share){const f=new File([blob],filename,{type:blob.type||'application/octet-stream'});if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:filename});return;}}
-      }catch(e){if(e&&e.name==='AbortError'){const er=new Error('declined');er.code='declined';throw er;}}
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);
-    }};
-  }
   render();
   (async()=>{
-    try{downloads=window.claude?await window.claude.use('downloads'):browserDownloads();}catch(e){downloads=null;}
-    try{db=window.claude?await window.claude.use('db'):await localDB();}catch(e){db=null;}
+    try{downloads=window.claude&&await window.claude.use('downloads');}catch(e){downloads=null;}
+    try{db=window.claude&&await window.claude.use('db');}catch(e){db=null;}
     if(!db){ready.films=ready.scenes=ready.shots=true;navReady=true;render();$('#screen').insertAdjacentHTML('afterbegin','<div class="empty"><b>Sign in to claude.ai to load your films.</b> This tool keeps its films, scenes and shots in the artifact database, which is only available to signed-in viewers.</div>');return;}
     sub('films');sub('scenes');sub('shots');
   })();
