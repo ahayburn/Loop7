@@ -1,0 +1,60 @@
+workflows:
+  ios-testflight:
+    name: Loop Previs iOS to TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    integrations:
+      app_store_connect: LoopPrevisKey   # must match the key name you give in Codemagic
+    environment:
+      node: latest
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.hayburn.loop7previs
+    scripts:
+      - name: Install Capacitor
+        script: npm install
+
+      - name: Copy the app into www/
+        script: |
+          mkdir -p www
+          cp -R index.html shim.js lib actors.txt hall.txt set.txt suite.txt www/
+
+      - name: Generate iOS project
+        script: npx cap add ios
+
+      - name: Hide status bar, set icon, skip export-compliance prompt
+        script: |
+          PLIST="ios/App/App/Info.plist"
+          setbool () {
+            /usr/libexec/PlistBuddy -c "Set :$1 $2" "$PLIST" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :$1 bool $2" "$PLIST"
+          }
+          setbool UIStatusBarHidden true
+          setbool UIViewControllerBasedStatusBarAppearance false
+          setbool ITSAppUsesNonExemptEncryption false
+          cp resources/icon.png "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
+
+      - name: Set build number
+        script: |
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $BUILD_NUMBER;/g" \
+            ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Apply signing profiles
+        script: xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace ios/App/App.xcworkspace \
+            --scheme App
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

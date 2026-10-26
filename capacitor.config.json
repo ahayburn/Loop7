@@ -1,0 +1,9 @@
+{
+  "appId": "com.hayburn.loop7previs",
+  "appName": "Loop Previs",
+  "webDir": "www",
+  "backgroundColor": "#000000",
+  "ios": {
+    "contentInset": "never"
+  }
+}
